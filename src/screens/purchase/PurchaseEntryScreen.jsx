@@ -1,0 +1,275 @@
+// src/screens/purchase/PurchaseEntryScreen.jsx
+//
+// Wholesaler "Buy Item" — record a purchase into own inventory.
+// Handles tiles (buy by boxes → sq ft) and granite (length × width → sq ft),
+// with a live amount + GST + total calculation.
+//
+import React, { useMemo, useState } from 'react';
+import {
+  Alert, KeyboardAvoidingView, Platform, ScrollView, StatusBar,
+  StyleSheet, Text, TouchableOpacity, View,
+} from 'react-native';
+import FormField from '../../components/FormField';
+import { purchaseService } from '../../services/purchaseService';
+import { theme } from '../../utils/theme';
+
+// Buy modes decide how quantity (in the product's unit, e.g. sq ft) is derived.
+const MODES = [
+  { key: 'boxes',  label: 'Tiles (by Box)' },
+  { key: 'sqft',   label: 'Granite (by Size)' },
+  { key: 'direct', label: 'Direct Qty' },
+];
+
+const money = (n) => '₹' + Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 });
+
+export default function PurchaseEntryScreen({ route, navigation }) {
+  const preset = route?.params?.product || null;   // optional {_id,name,code,sqft_per_box,purchase_price,gst_percent,unit}
+
+  const [mode, setMode] = useState(preset?.sqft_per_box ? 'boxes' : 'direct');
+  const [saving, setSaving] = useState(false);
+
+  const [form, setForm] = useState({
+    supplier_name: '',
+    product_name:  preset?.name || '',
+    product_id:    preset?._id || null,
+    product_code:  preset?.code || '',
+    rate:          preset ? String(preset.purchase_price || preset.wholesale_rate || '') : '',
+    gst_percent:   preset ? String(preset.gst_percent ?? 18) : '18',
+    // boxes mode
+    boxes:         '',
+    sqft_per_box:  preset?.sqft_per_box ? String(preset.sqft_per_box) : '',
+    // granite mode (per piece dims in inches)
+    slabL:         '',
+    slabW:         '',
+    slabPcs:       '1',
+    // direct mode
+    directQty:     '',
+    invoice_number: '',
+    notes:         '',
+  });
+
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const numOnly = (v) => v.replace(/[^0-9.]/g, '');
+
+  // Compute quantity (in the product unit — sq ft for tiles/granite) based on mode.
+  const qty = useMemo(() => {
+    if (mode === 'boxes') {
+      const b = parseFloat(form.boxes), s = parseFloat(form.sqft_per_box);
+      if (b > 0 && s > 0) return +(b * s).toFixed(2);
+      return 0;
+    }
+    if (mode === 'sqft') {
+      const L = parseFloat(form.slabL), W = parseFloat(form.slabW), p = parseFloat(form.slabPcs) || 1;
+      if (L > 0 && W > 0) return +(((L * W) / 144) * p).toFixed(2);   // in² → ft²
+      return 0;
+    }
+    return parseFloat(form.directQty) || 0;
+  }, [mode, form.boxes, form.sqft_per_box, form.slabL, form.slabW, form.slabPcs, form.directQty]);
+
+  const rate = parseFloat(form.rate) || 0;
+  const gstPct = parseFloat(form.gst_percent);
+  const amount = +(qty * rate).toFixed(2);
+  const gstAmount = Math.round(amount * (isNaN(gstPct) ? 18 : gstPct) / 100);
+  const total = amount + gstAmount;
+
+  const handleSave = async () => {
+    if (!form.supplier_name.trim()) { Alert.alert('Required', 'Enter supplier name.'); return; }
+    if (!form.product_name.trim())  { Alert.alert('Required', 'Enter product name.'); return; }
+    if (qty <= 0)  { Alert.alert('Required', 'Quantity must be greater than 0.'); return; }
+    if (rate <= 0) { Alert.alert('Required', 'Rate must be greater than 0.'); return; }
+
+    const payload = {
+      supplier_name: form.supplier_name.trim(),
+      product_id:    form.product_id || null,
+      product_code:  form.product_code || '',
+      product_name:  form.product_name.trim(),
+      qty, rate,
+      gst_percent:   isNaN(gstPct) ? 18 : gstPct,
+      invoice_number: form.invoice_number.trim(),
+      notes: [
+        form.notes.trim(),
+        mode === 'boxes'  ? `${form.boxes} box(es) × ${form.sqft_per_box} sqft/box` : '',
+        mode === 'sqft'   ? `${form.slabPcs} pc(s) ${form.slabL}"×${form.slabW}"` : '',
+      ].filter(Boolean).join(' | '),
+    };
+
+    setSaving(true);
+    try {
+      await purchaseService.create(payload);
+      Alert.alert('Success', 'Purchase recorded and stock added.', [
+        { text: 'OK', onPress: () => navigation.goBack() },
+      ]);
+    } catch (err) {
+      Alert.alert('Failed', err?.message || 'Could not record purchase.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <StatusBar barStyle="light-content" backgroundColor={theme.colors.primary} />
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => navigation.goBack()}><Text style={styles.back}>←</Text></TouchableOpacity>
+        <Text style={styles.headerTitle}>Buy / New Purchase</Text>
+        <View style={{ width: 24 }} />
+      </View>
+
+      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive">
+
+        <View style={styles.card}>
+          <FormField label="Supplier Name *" value={form.supplier_name}
+            onChangeText={v => set('supplier_name', v)} placeholder="Supplier / vendor name" />
+          <FormField label="Product Name *" value={form.product_name}
+            onChangeText={v => set('product_name', v)} placeholder="Item you are buying" editable={!preset} />
+          <FormField label="Invoice No." value={form.invoice_number}
+            onChangeText={v => set('invoice_number', v)} placeholder="Optional" />
+        </View>
+
+        {/* Buy mode */}
+        <Text style={styles.sectionTitle}>How are you buying?</Text>
+        <View style={styles.typeRow}>
+          {MODES.map(m => {
+            const active = mode === m.key;
+            return (
+              <TouchableOpacity key={m.key} style={[styles.typeChip, active && styles.typeChipOn]}
+                onPress={() => setMode(m.key)} activeOpacity={0.85}>
+                <Text style={[styles.typeChipText, active && styles.typeChipTextOn]}>{m.label}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        <View style={styles.card}>
+          {mode === 'boxes' && (
+            <>
+              <View style={styles.row}>
+                <View style={styles.col}>
+                  <FormField label="No. of Boxes" value={form.boxes}
+                    onChangeText={v => set('boxes', numOnly(v))} keyboardType="numeric" placeholder="e.g. 50" />
+                </View>
+                <View style={styles.col}>
+                  <FormField label="Sq Ft / Box" value={form.sqft_per_box}
+                    onChangeText={v => set('sqft_per_box', numOnly(v))} keyboardType="numeric" placeholder="e.g. 16" />
+                </View>
+              </View>
+              <FormField label="Rate (per Sq Ft)" value={form.rate}
+                onChangeText={v => set('rate', numOnly(v))} keyboardType="numeric" placeholder="0" />
+            </>
+          )}
+
+          {mode === 'sqft' && (
+            <>
+              <View style={styles.row}>
+                <View style={styles.col}>
+                  <FormField label="Slab Length (in)" value={form.slabL}
+                    onChangeText={v => set('slabL', numOnly(v))} keyboardType="numeric" placeholder="e.g. 96" />
+                </View>
+                <View style={styles.col}>
+                  <FormField label="Slab Width (in)" value={form.slabW}
+                    onChangeText={v => set('slabW', numOnly(v))} keyboardType="numeric" placeholder="e.g. 36" />
+                </View>
+              </View>
+              <View style={styles.row}>
+                <View style={styles.col}>
+                  <FormField label="No. of Pieces" value={form.slabPcs}
+                    onChangeText={v => set('slabPcs', numOnly(v))} keyboardType="numeric" placeholder="1" />
+                </View>
+                <View style={styles.col}>
+                  <FormField label="Rate (per Sq Ft)" value={form.rate}
+                    onChangeText={v => set('rate', numOnly(v))} keyboardType="numeric" placeholder="0" />
+                </View>
+              </View>
+            </>
+          )}
+
+          {mode === 'direct' && (
+            <View style={styles.row}>
+              <View style={styles.col}>
+                <FormField label="Quantity" value={form.directQty}
+                  onChangeText={v => set('directQty', numOnly(v))} keyboardType="numeric" placeholder="0" />
+              </View>
+              <View style={styles.col}>
+                <FormField label="Rate" value={form.rate}
+                  onChangeText={v => set('rate', numOnly(v))} keyboardType="numeric" placeholder="0" />
+              </View>
+            </View>
+          )}
+
+          <FormField label="GST %" value={form.gst_percent}
+            onChangeText={v => set('gst_percent', numOnly(v))} keyboardType="numeric" placeholder="18" />
+        </View>
+
+        {/* Live calculation summary */}
+        <View style={styles.summary}>
+          <Row label="Quantity" value={`${qty} ${mode === 'direct' ? '' : 'sq ft'}`} />
+          <Row label="Rate" value={money(rate)} />
+          <Row label="Amount" value={money(amount)} />
+          <Row label={`GST (${isNaN(gstPct) ? 18 : gstPct}%)`} value={money(gstAmount)} />
+          <View style={styles.divider} />
+          <Row label="Total" value={money(total)} big />
+        </View>
+
+        <TouchableOpacity style={[styles.saveBtn, saving && styles.saveBtnOff]} onPress={handleSave} disabled={saving} activeOpacity={0.85}>
+          <Text style={styles.saveBtnText}>{saving ? 'Saving...' : 'Confirm Purchase'}</Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </KeyboardAvoidingView>
+  );
+}
+
+function Row({ label, value, big }) {
+  return (
+    <View style={styles.sumRow}>
+      <Text style={[styles.sumLabel, big && styles.sumLabelBig]}>{label}</Text>
+      <Text style={[styles.sumValue, big && styles.sumValueBig]}>{value}</Text>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  header: {
+    backgroundColor: theme.colors.primary,
+    paddingTop: Platform.OS === 'ios' ? 52 : (StatusBar.currentHeight || 24) + 12,
+    paddingBottom: 14, paddingHorizontal: 16,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+  },
+  back: { color: '#fff', fontSize: 24, fontWeight: '700' },
+  headerTitle: { color: '#fff', fontSize: 17, fontWeight: '800' },
+
+  container: { backgroundColor: theme.colors.background, padding: 16, paddingBottom: 320 },
+
+  sectionTitle: { fontSize: 13, fontWeight: '800', color: theme.colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 8 },
+  typeRow: { flexDirection: 'row', gap: 8, marginBottom: 16 },
+  typeChip: {
+    flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: 'center',
+    borderWidth: 1.5, borderColor: theme.colors.border, backgroundColor: theme.colors.surface,
+  },
+  typeChipOn: { borderColor: theme.colors.accent, backgroundColor: theme.colors.accentLight },
+  typeChipText: { fontSize: 12, fontWeight: '700', color: theme.colors.textSecondary, textAlign: 'center' },
+  typeChipTextOn: { color: theme.colors.accent },
+
+  card: {
+    backgroundColor: theme.colors.surface, borderRadius: 14, padding: 16, marginBottom: 14,
+    borderWidth: 1, borderColor: theme.colors.border,
+  },
+  row: { flexDirection: 'row', gap: 12 },
+  col: { flex: 1 },
+
+  summary: {
+    backgroundColor: theme.colors.primary, borderRadius: 14, padding: 18, marginBottom: 16,
+  },
+  sumRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 5 },
+  sumLabel: { fontSize: 13, color: 'rgba(255,255,255,0.75)' },
+  sumValue: { fontSize: 14, fontWeight: '700', color: '#fff' },
+  sumLabelBig: { fontSize: 15, color: '#fff', fontWeight: '800' },
+  sumValueBig: { fontSize: 20, fontWeight: '900', color: theme.colors.accent },
+  divider: { height: 1, backgroundColor: 'rgba(255,255,255,0.15)', marginVertical: 8 },
+
+  saveBtn: {
+    backgroundColor: theme.colors.accent, borderRadius: 14, paddingVertical: 16,
+    alignItems: 'center',
+  },
+  saveBtnOff: { opacity: 0.6 },
+  saveBtnText: { color: '#fff', fontSize: 15, fontWeight: '800' },
+});

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "40325576873",
+    "project_id": "wholesaler-app-cb0fd",
+    "storage_bucket": "wholesaler-app-cb0fd.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:40325576873:android:c6ed245622bc751c8f51b8",
+        "android_client_info": {
+          "package_name": "com.wholesalerapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyANEHMrW1V2Rh7VI64I74SXwUgzESJgV0w"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
