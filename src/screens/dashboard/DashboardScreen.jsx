@@ -365,6 +365,13 @@ export default function DashboardScreen({ navigation }) {
       label: 'Accounts',
       onPress: () => navigation.navigate('Accounts'),
     },
+    {
+      icon: 'receipt-text-outline',
+      iconColor: '#F26522',
+      bg: '#FFF4E8',
+      label: 'Invoices',
+      onPress: () => navigation.navigate('InvoiceList'),
+    },
   ];
 
 

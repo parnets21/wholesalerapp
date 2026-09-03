@@ -15,7 +15,6 @@ import {
   StatusBar,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -76,7 +75,18 @@ function ProductCard({ item, onPress, isMine, onDelete }) {
               </TouchableOpacity>
             )}
           </View>
-          <Text style={styles.cardCode}>{item.code}{isMine ? '  · My item' : ''}</Text>
+          <View style={styles.cardCodeRow}>
+            <Text style={styles.cardCode}>{item.code}</Text>
+            {item.source === 'wholesaler' ? (
+              <View style={[styles.srcBadge, styles.srcBadgeMine]}>
+                <Text style={[styles.srcBadgeText, { color: '#047857' }]}>{isMine ? 'My Product' : 'Wholesaler'}</Text>
+              </View>
+            ) : (
+              <View style={[styles.srcBadge, styles.srcBadgeAdmin]}>
+                <Text style={[styles.srcBadgeText, { color: '#1D4ED8' }]}>Admin Catalog</Text>
+              </View>
+            )}
+          </View>
 
           <View style={styles.chipRow}>
             {item.size   ? <View style={styles.specChip}><Text style={styles.specChipText}>{item.size}</Text></View>   : null}
@@ -93,8 +103,6 @@ function ProductCard({ item, onPress, isMine, onDelete }) {
         <PriceRow label="Purchase" value={money(item.purchase_price)} />
         <PriceRow label="Selling"  value={money(item.selling_price)} />
         <PriceRow label="Wholesale" value={money(item.wholesale_rate)} />
-        <PriceRow label="Dealer"   value={money(item.dealer_price)} />
-        <PriceRow label="Retail"   value={money(item.retail_price)} />
         <PriceRow label="MRP"      value={money(item.mrp)} />
         <View style={styles.priceDivider} />
         <PriceRow label="GST" value={`${item.gst_percent ?? 18}%`} />
@@ -209,6 +217,7 @@ export default function ProductListScreen({ navigation }) {
   const [products,      setProducts]      = useState([]);
   const [pagination,    setPagination]    = useState({ page: 1, totalPages: 1, total: 0 });
   const [search,        setSearch]        = useState('');
+  const [sourceTab,     setSourceTab]     = useState('all');   // 'all' | 'admin' | 'mine'
   const [activeFilters, setActiveFilters] = useState({ size: '', finish: '', material: '', color: '' });
   const [filterOptions, setFilterOptions] = useState({ sizes: [], finishes: [], materials: [], colors: [] });
   const [filterVisible, setFilterVisible] = useState(false);
@@ -236,6 +245,8 @@ export default function ProductListScreen({ navigation }) {
     try {
       const params = {
         page, limit: 20,
+        ...(sourceTab === 'admin' && { catalog_only: true }),
+        ...(sourceTab === 'mine'  && { mine: true }),
         ...(search.trim()          && { search:   search.trim() }),
         ...(activeFilters.size     && { size:     activeFilters.size }),
         ...(activeFilters.finish   && { finish:   activeFilters.finish }),
@@ -258,7 +269,7 @@ export default function ProductListScreen({ navigation }) {
       setLoadingMore(false);
       setRefreshing(false);
     }
-  }, [search, activeFilters]);
+  }, [search, activeFilters, sourceTab]);
 
   useEffect(() => { loadProducts(1); }, [loadProducts]);
 
@@ -267,12 +278,6 @@ export default function ProductListScreen({ navigation }) {
     const unsub = navigation.addListener('focus', () => { loadProducts(1); });
     return unsub;
   }, [navigation, loadProducts]);
-
-  const handleSearch = (text) => {
-    setSearch(text);
-    clearTimeout(searchTimer.current);
-    // search state change triggers useEffect → loadProducts
-  };
 
   const handleRefresh    = () => loadProducts(1, true);
   const handleLoadMore   = () => {
@@ -329,23 +334,28 @@ export default function ProductListScreen({ navigation }) {
           </TouchableOpacity>
         </View>
 
-        {/* Search bar — inside header */}
-        <View style={styles.searchWrap}>
-          <Icon name="magnify" size={18} color={theme.colors.textDisabled} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search by code, name, design…"
-            placeholderTextColor={theme.colors.textDisabled}
-            value={search}
-            onChangeText={handleSearch}
-            returnKeyType="search"
-          />
-          {search.length > 0 && (
-            <TouchableOpacity onPress={() => setSearch('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Icon name="close-circle" size={16} color={theme.colors.textDisabled} />
+      </View>
+
+      {/* ── Source segmented tabs: All / Admin Catalog / My Products ── */}
+      <View style={styles.segmentRow}>
+        {[
+          { key: 'all',   label: 'All',           icon: 'view-grid-outline' },
+          { key: 'admin', label: 'Admin Catalog', icon: 'store-outline' },
+          { key: 'mine',  label: 'My Products',   icon: 'account-outline' },
+        ].map(seg => {
+          const active = sourceTab === seg.key;
+          return (
+            <TouchableOpacity
+              key={seg.key}
+              style={[styles.segment, active && styles.segmentActive]}
+              onPress={() => setSourceTab(seg.key)}
+              activeOpacity={0.85}
+            >
+              <Icon name={seg.icon} size={15} color={active ? '#fff' : NAV} />
+              <Text style={[styles.segmentText, active && styles.segmentTextActive]}>{seg.label}</Text>
             </TouchableOpacity>
-          )}
-        </View>
+          );
+        })}
       </View>
 
       {/* ── Active filter chips ── */}
@@ -464,21 +474,21 @@ export default function ProductListScreen({ navigation }) {
         onApply={handleApplyFilters}
       />
 
-      {/* ── Bottom action bar: Add Product + Buy ── */}
+      {/* ── Bottom action bar ── */}
       <View style={[styles.fabBar, { paddingBottom: Math.max(insets.bottom, 10) }]}>
-        <TouchableOpacity
-          style={styles.fabSecondary}
-          activeOpacity={0.85}
-          onPress={() => navigation.navigate('AddProduct')}
-        >
-          <Icon name="plus" size={18} color={NAV} />
-          <Text style={styles.fabSecondaryText}>Add Product</Text>
+        <TouchableOpacity style={styles.fabIcon} activeOpacity={0.8} onPress={() => navigation.navigate('AddProduct')}>
+          <Icon name="plus-circle-outline" size={22} color={NAV} />
+          <Text style={styles.fabIconText}>Add</Text>
         </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.fabPrimary}
-          activeOpacity={0.85}
-          onPress={() => navigation.navigate('PurchaseEntry')}
-        >
+        <TouchableOpacity style={styles.fabIcon} activeOpacity={0.8} onPress={() => navigation.navigate('QuotationList')}>
+          <Icon name="file-document-outline" size={22} color={NAV} />
+          <Text style={styles.fabIconText}>Quotes</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.fabIcon} activeOpacity={0.8} onPress={() => navigation.navigate('InvoiceList')}>
+          <Icon name="receipt-text-outline" size={22} color={NAV} />
+          <Text style={styles.fabIconText}>Invoices</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.fabPrimary} activeOpacity={0.85} onPress={() => navigation.navigate('PurchaseEntry')}>
           <Icon name="cart-outline" size={18} color="#fff" />
           <Text style={styles.fabPrimaryText}>Buy Item</Text>
         </TouchableOpacity>
@@ -558,6 +568,22 @@ const styles = StyleSheet.create({
     paddingVertical: 0,
   },
 
+  /* Source segmented tabs */
+  segmentRow: {
+    flexDirection: 'row', gap: 8,
+    paddingHorizontal: 12, paddingVertical: 10,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1, borderBottomColor: theme.colors.border,
+  },
+  segment: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
+    paddingVertical: 9, borderRadius: 10,
+    borderWidth: 1.5, borderColor: theme.colors.border, backgroundColor: '#fff',
+  },
+  segmentActive: { backgroundColor: NAV, borderColor: NAV },
+  segmentText: { fontSize: 12, fontWeight: '700', color: NAV },
+  segmentTextActive: { color: '#fff' },
+
   /* Active filter chips */
   activeFilterScroll: {
     backgroundColor: '#fff',
@@ -625,6 +651,11 @@ const styles = StyleSheet.create({
   cardTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   cardName:     { flex: 1, fontSize: 14.5, fontWeight: '800', color: theme.colors.textPrimary },
   cardCode:     { fontSize: 11, color: theme.colors.textSecondary },
+  cardCodeRow:  { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 1 },
+  srcBadge:     { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6 },
+  srcBadgeAdmin:{ backgroundColor: '#DBEAFE' },
+  srcBadgeMine: { backgroundColor: '#DCFCE7' },
+  srcBadgeText: { fontSize: 9.5, fontWeight: '800' },
   chipRow:      { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 2 },
   specChip: {
     backgroundColor: '#F0EEF8', borderRadius: 6,
@@ -706,21 +737,20 @@ const styles = StyleSheet.create({
   /* Bottom action bar */
   fabBar: {
     position: 'absolute', left: 0, right: 0, bottom: 0,
-    flexDirection: 'row', gap: 10,
-    paddingHorizontal: 14, paddingTop: 10,
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 12, paddingTop: 8,
     backgroundColor: '#fff',
     borderTopWidth: 1, borderTopColor: theme.colors.border,
   },
-  fabSecondary: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
-    height: 48, borderRadius: 12,
-    backgroundColor: theme.colors.accentLight,
-    borderWidth: 1.5, borderColor: NAV,
+  // Compact icon + tiny label (secondary actions)
+  fabIcon: {
+    width: 58, alignItems: 'center', justifyContent: 'center', gap: 2, paddingVertical: 4,
   },
-  fabSecondaryText: { fontSize: 14, fontWeight: '800', color: NAV },
+  fabIconText: { fontSize: 10.5, fontWeight: '700', color: NAV },
+  // Prominent primary action (Buy Item)
   fabPrimary: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
-    height: 48, borderRadius: 12, backgroundColor: OR,
+    height: 46, borderRadius: 12, backgroundColor: OR, marginLeft: 6,
   },
   fabPrimaryText: { fontSize: 14, fontWeight: '800', color: '#fff' },
 });

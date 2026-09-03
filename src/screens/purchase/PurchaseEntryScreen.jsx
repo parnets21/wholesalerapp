@@ -4,13 +4,14 @@
 // Handles tiles (buy by boxes → sq ft) and granite (length × width → sq ft),
 // with a live amount + GST + total calculation.
 //
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Alert, KeyboardAvoidingView, Platform, ScrollView, StatusBar,
-  StyleSheet, Text, TouchableOpacity, View,
+  Alert, FlatList, KeyboardAvoidingView, Modal, Platform, ScrollView, StatusBar,
+  StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import FormField from '../../components/FormField';
 import { purchaseService } from '../../services/purchaseService';
+import { wholesalerProductService } from '../../services/productService';
 import { theme } from '../../utils/theme';
 
 // Buy modes decide how quantity (in the product's unit, e.g. sq ft) is derived.
@@ -28,6 +29,37 @@ export default function PurchaseEntryScreen({ route, navigation }) {
   const [mode, setMode] = useState(preset?.sqft_per_box ? 'boxes' : 'direct');
   const [saving, setSaving] = useState(false);
 
+  // ── Admin catalog product picker ──
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [catalog, setCatalog] = useState([]);
+  const [catalogLoading, setCatalogLoading] = useState(false);
+  const [pickerSearch, setPickerSearch] = useState('');
+  const [selectedName, setSelectedName] = useState(preset?.name || '');
+
+  useEffect(() => {
+    setCatalogLoading(true);
+    wholesalerProductService.listCatalog({ catalog_only: true, limit: 200 })
+      .then(res => setCatalog(res?.data?.products || res?.products || []))
+      .catch(() => setCatalog([]))
+      .finally(() => setCatalogLoading(false));
+  }, []);
+
+  const pickProduct = (p) => {
+    setForm(f => ({
+      ...f,
+      product_id:   p._id,
+      product_code: p.code || '',
+      product_name: p.name || '',
+      rate:         String(p.purchase_price || p.wholesale_rate || p.selling_price || ''),
+      gst_percent:  String(p.gst_percent ?? 18),
+      sqft_per_box: p.sqft_per_box ? String(p.sqft_per_box) : f.sqft_per_box,
+    }));
+    setSelectedName(p.name || '');
+    if (p.sqft_per_box) setMode('boxes');
+    setPickerOpen(false);
+    setPickerSearch('');
+  };
+
   const [form, setForm] = useState({
     supplier_name: '',
     product_name:  preset?.name || '',
@@ -44,7 +76,6 @@ export default function PurchaseEntryScreen({ route, navigation }) {
     slabPcs:       '1',
     // direct mode
     directQty:     '',
-    invoice_number: '',
     notes:         '',
   });
 
@@ -85,7 +116,6 @@ export default function PurchaseEntryScreen({ route, navigation }) {
       product_name:  form.product_name.trim(),
       qty, rate,
       gst_percent:   isNaN(gstPct) ? 18 : gstPct,
-      invoice_number: form.invoice_number.trim(),
       notes: [
         form.notes.trim(),
         mode === 'boxes'  ? `${form.boxes} box(es) × ${form.sqft_per_box} sqft/box` : '',
@@ -118,13 +148,63 @@ export default function PurchaseEntryScreen({ route, navigation }) {
       <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive">
 
         <View style={styles.card}>
+          {/* Pick from admin catalog */}
+          <Text style={styles.pickLabel}>Select Product from Catalog</Text>
+          <TouchableOpacity style={styles.pickBtn} onPress={() => setPickerOpen(true)} activeOpacity={0.8}>
+            <Text style={[styles.pickBtnText, !selectedName && styles.pickBtnPlaceholder]} numberOfLines={1}>
+              {selectedName || 'Tap to choose an admin product…'}
+            </Text>
+            <Text style={styles.pickChevron}>▾</Text>
+          </TouchableOpacity>
+          <Text style={styles.pickHint}>Or type the product name below to buy a custom item.</Text>
+
           <FormField label="Supplier Name *" value={form.supplier_name}
             onChangeText={v => set('supplier_name', v)} placeholder="Supplier / vendor name" />
           <FormField label="Product Name *" value={form.product_name}
-            onChangeText={v => set('product_name', v)} placeholder="Item you are buying" editable={!preset} />
-          <FormField label="Invoice No." value={form.invoice_number}
-            onChangeText={v => set('invoice_number', v)} placeholder="Optional" />
+            onChangeText={v => set('product_name', v)} placeholder="Item you are buying" />
         </View>
+
+        {/* Product picker modal */}
+        <Modal visible={pickerOpen} animationType="slide" transparent onRequestClose={() => setPickerOpen(false)}>
+          <View style={styles.modalOverlay}>
+            <TouchableOpacity style={{ flex: 1 }} onPress={() => setPickerOpen(false)} activeOpacity={1} />
+            <View style={styles.modalSheet}>
+              <View style={styles.modalHandle} />
+              <Text style={styles.modalTitle}>Select Product</Text>
+              <View style={styles.modalSearch}>
+                <TextInput
+                  style={styles.modalSearchInput}
+                  placeholder="Search catalog…"
+                  placeholderTextColor={theme.colors.textDisabled}
+                  value={pickerSearch}
+                  onChangeText={setPickerSearch}
+                />
+              </View>
+              {catalogLoading ? (
+                <Text style={styles.modalEmpty}>Loading catalog…</Text>
+              ) : (
+                <FlatList
+                  data={catalog.filter(p => {
+                    const q = pickerSearch.trim().toLowerCase();
+                    return !q || (p.name || '').toLowerCase().includes(q) || (p.code || '').toLowerCase().includes(q);
+                  })}
+                  keyExtractor={p => p._id}
+                  style={{ maxHeight: 380 }}
+                  ListEmptyComponent={<Text style={styles.modalEmpty}>No catalog products found.</Text>}
+                  renderItem={({ item }) => (
+                    <TouchableOpacity style={styles.pickRow} onPress={() => pickProduct(item)} activeOpacity={0.7}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.pickRowName}>{item.name}</Text>
+                        <Text style={styles.pickRowMeta}>{item.code} · {item.size || '—'} · ₹{item.purchase_price || item.selling_price || 0}/{item.unit || 'Sq Ft'}</Text>
+                      </View>
+                      <Text style={styles.pickRowArrow}>›</Text>
+                    </TouchableOpacity>
+                  )}
+                />
+              )}
+            </View>
+          </View>
+        </Modal>
 
         {/* Buy mode */}
         <Text style={styles.sectionTitle}>How are you buying?</Text>
@@ -272,4 +352,29 @@ const styles = StyleSheet.create({
   },
   saveBtnOff: { opacity: 0.6 },
   saveBtnText: { color: '#fff', fontSize: 15, fontWeight: '800' },
+
+  /* Product picker */
+  pickLabel: { fontSize: 13, fontWeight: '600', color: theme.colors.textPrimary, marginBottom: 6 },
+  pickBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    borderWidth: 1.5, borderColor: theme.colors.accent, borderRadius: 10,
+    paddingHorizontal: 12, paddingVertical: 12, backgroundColor: theme.colors.accentLight,
+  },
+  pickBtnText: { flex: 1, fontSize: 14, fontWeight: '700', color: theme.colors.accentDark },
+  pickBtnPlaceholder: { color: theme.colors.textSecondary, fontWeight: '500' },
+  pickChevron: { fontSize: 14, color: theme.colors.accentDark, marginLeft: 8 },
+  pickHint: { fontSize: 11.5, color: theme.colors.textSecondary, marginTop: 6, marginBottom: 6 },
+
+  /* Modal */
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  modalSheet: { backgroundColor: '#fff', borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 16, paddingBottom: 30 },
+  modalHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: '#D1D5DB', alignSelf: 'center', marginBottom: 10 },
+  modalTitle: { fontSize: 16, fontWeight: '800', color: theme.colors.textPrimary, marginBottom: 10 },
+  modalSearch: { borderWidth: 1, borderColor: theme.colors.border, borderRadius: 10, paddingHorizontal: 12, marginBottom: 10 },
+  modalSearchInput: { fontSize: 14, color: theme.colors.textPrimary, paddingVertical: Platform.OS === 'ios' ? 10 : 6 },
+  modalEmpty: { textAlign: 'center', color: theme.colors.textSecondary, padding: 20, fontSize: 13 },
+  pickRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: theme.colors.border },
+  pickRowName: { fontSize: 14, fontWeight: '700', color: theme.colors.textPrimary },
+  pickRowMeta: { fontSize: 11.5, color: theme.colors.textSecondary, marginTop: 2 },
+  pickRowArrow: { fontSize: 20, color: theme.colors.textDisabled, marginLeft: 8 },
 });

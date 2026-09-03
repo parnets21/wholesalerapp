@@ -19,6 +19,14 @@ import AddProductScreen         from '../screens/product/AddProductScreen';
 // ── Purchase (Buy items) ─────────────────────────────────────
 import PurchaseEntryScreen      from '../screens/purchase/PurchaseEntryScreen';
 
+// ── Quotations (request → admin quote → accept/reject) ───────
+import QuotationListScreen      from '../screens/quotation/QuotationListScreen';
+import ProductRequestScreen     from '../screens/quotation/ProductRequestScreen';
+
+// ── Invoices (generated after admin approves an order) ───────
+import InvoiceListScreen        from '../screens/invoice/InvoiceListScreen';
+import InvoiceDetailScreen      from '../screens/invoice/InvoiceDetailScreen';
+
 // ── Dispatch ─────────────────────────────────────────────────
 import DispatchEntryScreen      from '../screens/dispatch/DispatchEntryScreen';
 import DispatchTrackingScreen   from '../screens/dispatch/DispatchTrackingScreen';
@@ -87,6 +95,14 @@ export default function AppStack() {
 
       {/* ── Purchase (Buy) ── */}
       <Stack.Screen name="PurchaseEntry" component={PurchaseEntryScreen} options={{ headerShown: false }} />
+
+      {/* ── Quotations ── */}
+      <Stack.Screen name="QuotationList"  component={QuotationListScreen}  options={{ headerShown: false }} />
+      <Stack.Screen name="ProductRequest" component={ProductRequestScreen} options={{ headerShown: false }} />
+
+      {/* ── Invoices ── */}
+      <Stack.Screen name="InvoiceList"   component={InvoiceListScreen}   options={{ headerShown: false }} />
+      <Stack.Screen name="InvoiceDetail" component={InvoiceDetailScreen} options={{ headerShown: false }} />
 
       {/* ── Dispatch ── */}
       <Stack.Screen name="DispatchEntry"     component={DispatchEntryScreen}     options={{ ...H, title: 'New Dispatch' }} />

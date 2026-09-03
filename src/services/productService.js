@@ -19,6 +19,7 @@ export const productService = {
 // Stock is managed via Purchase → Inventory (separate module).
 export const wholesalerProductService = {
   // GET /api/wholesaler/products?page=1&limit=20&search=&size=&finish=...
+  // Pass { catalog_only: true } to get ONLY admin catalog products (exclude wholesaler-added).
   listCatalog: (params) => api.get('/wholesaler/products', { params }),
 
   // GET /api/wholesaler/products/:id

@@ -8,7 +8,7 @@ import { getToken, removeToken } from '../utils/storage';
 // Physical Device   : replace with your machine's current WiFi IP
 //                     Run `ipconfig` (Windows) / `ifconfig` (Mac) to find it
 //
-// YOUR CURRENT SERVER IP: 192.168.1.44
+// YOUR CURRENT SERVER IP: 192.168.1.38  (using adb reverse over Wi-Fi → localhost)
 // If network changes, update this line and rebuild the app.
 //
 export const BASE_URL = 'http://localhost:5000/api';
