@@ -29,18 +29,18 @@ const SHADOW = {
 
 // ── All 12 expense categories with colors ─────────────────────────────────────
 export const EXPENSE_CATEGORIES = [
-  { key: 'Transport',       color: '#2563EB', bg: '#EFF6FF', icon: 'truck-delivery-outline' },
-  { key: 'Loading',         color: '#7C3AED', bg: '#F5F3FF', icon: 'package-up' },
-  { key: 'Unloading',       color: '#0891B2', bg: '#E0F2FE', icon: 'package-down' },
-  { key: 'Warehouse Rent',  color: '#EA580C', bg: '#FFF7ED', icon: 'warehouse' },
-  { key: 'Electricity',     color: '#CA8A04', bg: '#FEFCE8', icon: 'lightning-bolt' },
+  { key: 'Rent',            color: '#EA580C', bg: '#FFF7ED', icon: 'home-city-outline' },
   { key: 'Salary',          color: '#9C27B0', bg: '#F3E8FF', icon: 'account-cash-outline' },
-  { key: 'Packaging',       color: '#059669', bg: '#ECFDF5', icon: 'package-variant' },
-  { key: 'Maintenance',     color: '#DC2626', bg: '#FEF2F2', icon: 'tools' },
-  { key: 'Office Expense',  color: '#475569', bg: '#F1F5F9', icon: 'office-building-outline' },
-  { key: 'Travel',          color: '#0D9488', bg: '#F0FDFA', icon: 'airplane-outline' },
+  { key: 'Electricity',     color: '#CA8A04', bg: '#FEFCE8', icon: 'lightning-bolt' },
+  { key: 'Internet',        color: '#2563EB', bg: '#EFF6FF', icon: 'wifi' },
+  { key: 'Fuel',            color: '#B45309', bg: '#FEF3C7', icon: 'fuel' },
   { key: 'Marketing',       color: '#F59E0B', bg: '#FFFBEB', icon: 'bullhorn-outline' },
-  { key: 'Other',           color: '#6B7280', bg: '#F3F4F6', icon: 'dots-horizontal-circle-outline' },
+  { key: 'Office Expense',  color: '#475569', bg: '#F1F5F9', icon: 'office-building-outline' },
+  { key: 'Maintenance',     color: '#DC2626', bg: '#FEF2F2', icon: 'tools' },
+  { key: 'Transport',       color: '#0D9488', bg: '#F0FDFA', icon: 'truck-delivery-outline' },
+  { key: 'Warehouse Rent',  color: '#7C3AED', bg: '#F5F3FF', icon: 'warehouse' },
+  { key: 'Packaging',       color: '#059669', bg: '#ECFDF5', icon: 'package-variant' },
+  { key: 'Miscellaneous',   color: '#6B7280', bg: '#F3F4F6', icon: 'dots-horizontal-circle-outline' },
 ];
 
 function getCatConfig(category) {
@@ -137,6 +137,9 @@ export default function ExpenseListScreen({ navigation }) {
             <Text style={styles.headerTitle}>Expenses</Text>
             <Text style={styles.headerSub}>Expense Management</Text>
           </View>
+          <TouchableOpacity onPress={() => navigation.navigate('ExpenseReport')} style={[styles.headerAction, { marginRight: 8, backgroundColor: 'rgba(255,255,255,0.15)' }]}>
+            <Icon name="chart-bar" size={20} color={WHITE} />
+          </TouchableOpacity>
           <TouchableOpacity onPress={() => navigation.navigate('ExpenseEntry')} style={styles.headerAction}>
             <Icon name="plus" size={20} color={WHITE} />
           </TouchableOpacity>

@@ -155,9 +155,11 @@ export default function ProductDetailScreen({ route, navigation }) {
   }
 
   // ── Data ───────────────────────────────────────────────────
-  const catName   = product.category_id?.name    || product.category  || null;
-  const brandName = product.brand_id?.name        || product.brand     || null;
-  const subCat    = product.sub_category_id?.name || null;
+  // category/brand may be a string, {name}, or {id,name,code} — never render the object.
+  const nameOf = (v) => (v && typeof v === 'object' ? (v.name || null) : (v || null));
+  const catName   = nameOf(product.category_id)     || nameOf(product.category) || null;
+  const brandName = nameOf(product.brand_id)        || nameOf(product.brand)    || null;
+  const subCat    = nameOf(product.sub_category_id) || null;
   const imageUrl  = product.image_urls?.[0];
 
   const headerTags = [

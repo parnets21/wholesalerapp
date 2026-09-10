@@ -455,6 +455,25 @@ export default function InventoryScreen({ navigation }) {
           </TouchableOpacity>
         </View>
 
+        {/* Stock action buttons */}
+        <View style={styles.stockActions}>
+          <TouchableOpacity style={styles.stockActBtn} activeOpacity={0.85}
+            onPress={() => navigation.navigate('StockAdjust', { mode: 'in' })}>
+            <Icon name="arrow-down-bold-box-outline" size={16} color="#059669" />
+            <Text style={[styles.stockActText, { color: '#059669' }]}>Stock In</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.stockActBtn} activeOpacity={0.85}
+            onPress={() => navigation.navigate('StockAdjust', { mode: 'out' })}>
+            <Icon name="arrow-up-bold-box-outline" size={16} color="#DC2626" />
+            <Text style={[styles.stockActText, { color: '#DC2626' }]}>Stock Out</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.stockActBtn} activeOpacity={0.85}
+            onPress={() => navigation.navigate('StockTransfer')}>
+            <Icon name="swap-horizontal-bold" size={16} color="#2563EB" />
+            <Text style={[styles.stockActText, { color: '#2563EB' }]}>Transfer</Text>
+          </TouchableOpacity>
+        </View>
+
         {/* Search */}
         <View style={styles.searchWrap}>
           <Icon name="magnify" size={18} color={MUTED} style={{ marginLeft: 12 }} />
@@ -569,6 +588,14 @@ export default function InventoryScreen({ navigation }) {
                 {warehouse === w._id && <Icon name="check" size={16} color={WHITE} />}
               </TouchableOpacity>
             ))}
+            <TouchableOpacity
+              style={[styles.pickerItem, { backgroundColor: '#EEF1F6', marginTop: 6 }]}
+              onPress={() => { setShowWHPicker(false); navigation.navigate('WarehouseList'); }}
+            >
+              <Icon name="cog-outline" size={16} color={PRIMARY} />
+              <Text style={[styles.pickerText, { color: PRIMARY }]}>Manage Warehouses</Text>
+              <Icon name="chevron-right" size={16} color={PRIMARY} />
+            </TouchableOpacity>
           </View>
         </TouchableOpacity>
       </Modal>
@@ -625,6 +652,13 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   whBtnText: { color: WHITE, fontSize: 11, fontWeight: '700', maxWidth: 70 },
+
+  stockActions: { flexDirection: 'row', gap: 10, paddingHorizontal: 16, marginBottom: 10 },
+  stockActBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    backgroundColor: WHITE, borderRadius: 10, paddingVertical: 9,
+  },
+  stockActText: { fontSize: 13, fontWeight: '800' },
 
   searchWrap: {
     flexDirection: 'row', alignItems: 'center',

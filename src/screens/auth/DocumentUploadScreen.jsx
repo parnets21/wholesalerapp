@@ -276,22 +276,10 @@ export default function DocumentUploadScreen({ route, navigation }) {
         </Text>
       </TouchableOpacity>
 
-      {/* ── Skip option ── */}
-      <TouchableOpacity
-        style={styles.skipBtn}
-        onPress={() =>
-          Alert.alert(
-            'Skip for Now?',
-            'Your account approval requires KYC documents. You can upload them later from your profile settings.',
-            [
-              { text: 'Upload Now', style: 'cancel' },
-              { text: 'Skip & Login', onPress: () => navigation.replace('Login', { mobile }) },
-            ]
-          )
-        }
-      >
-        <Text style={styles.skipText}>Skip for now — upload later</Text>
-      </TouchableOpacity>
+      {/* KYC is mandatory before approval — no skip. */}
+      <Text style={styles.kycNote}>
+        GST Certificate and PAN Card are mandatory for account verification.
+      </Text>
     </ScrollView>
   );
 }
@@ -459,9 +447,12 @@ const styles = StyleSheet.create({
   },
   submitBtnText: { fontSize: 15, fontWeight: '700', color: '#FFF', letterSpacing: 0.3 },
 
-  skipBtn:  { alignItems: 'center', paddingVertical: 8 },
-  skipText: {
-    fontSize: 13, color: theme.colors.textSecondary,
-    textDecorationLine: 'underline',
+  kycNote: {
+    textAlign: 'center',
+    fontSize: 12,
+    color: theme.colors.textSecondary,
+    marginTop: 14,
+    paddingHorizontal: 24,
+    lineHeight: 17,
   },
 });

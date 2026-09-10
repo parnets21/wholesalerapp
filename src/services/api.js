@@ -18,7 +18,13 @@ const TIMEOUT_MS = 20000; // 20s — generous for slow mobile networks
 async function request(method, path, data, params) {
   const token = await getToken().catch(() => null);
 
-  const headers = { 'Content-Type': 'application/json' };
+  const headers = {
+    'Content-Type': 'application/json',
+    // Force fresh data — prevents stale 304 "Not Modified" responses that were
+    // showing old product lists after tab/filter changes.
+    'Cache-Control': 'no-cache',
+    'Pragma': 'no-cache',
+  };
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
   // Build URL + optional query string
@@ -91,12 +97,40 @@ async function request(method, path, data, params) {
   return json;
 }
 
+// Multipart upload — sends FormData. Do NOT set Content-Type; RN/fetch adds the
+// correct multipart boundary automatically.
+async function upload(path, formData) {
+  const token = await getToken().catch(() => null);
+  const headers = {};
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
+  const url = `${BASE_URL}${path}`;
+  let response;
+  try {
+    response = await fetch(url, { method: 'POST', headers, body: formData });
+  } catch (networkErr) {
+    throw new Error(`Upload failed. Cannot reach server.\n${networkErr.message}`);
+  }
+  if (response.status === 401) await removeToken().catch(() => {});
+
+  let json;
+  const ct = response.headers.get('content-type') || '';
+  json = ct.includes('application/json') ? await response.json() : { message: await response.text() };
+  if (!response.ok) {
+    const err = new Error(json?.message || `HTTP ${response.status}`);
+    err.status = response.status; err.data = json;
+    throw err;
+  }
+  return json;
+}
+
 const api = {
   get:    (path, opts = {}) => request('GET',    path, null,  opts.params),
   post:   (path, data)      => request('POST',   path, data),
   patch:  (path, data)      => request('PATCH',  path, data),
   put:    (path, data)      => request('PUT',    path, data),
   delete: (path)            => request('DELETE', path),
+  upload,
 };
 
 export default api;

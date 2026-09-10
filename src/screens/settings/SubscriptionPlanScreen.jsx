@@ -1,19 +1,38 @@
 // src/screens/settings/SubscriptionPlanScreen.jsx
-import React from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useState } from 'react';
+import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import useAuth from '../../hooks/useAuth';
+import { subscriptionService } from '../../services/subscriptionService';
 import { theme } from '../../utils/theme';
 
 const PLANS = [
-  { name: 'Free',     color: '#757575', price: '₹0',      features: ['5 Products', '10 Enquiries/month', 'Basic Dashboard'] },
-  { name: 'Silver',   color: '#9E9E9E', price: '₹999/mo', features: ['100 Products', 'Unlimited Enquiries', 'Sales Reports', 'FCM Notifications'] },
-  { name: 'Gold',     color: '#FBBC04', price: '₹1,999/mo',features: ['Unlimited Products', 'All Reports', 'PDF Export', 'Staff Management', 'Customer Ledger'] },
-  { name: 'Platinum', color: '#1A73E8', price: '₹3,999/mo',features: ['Everything in Gold', 'Analytics Dashboard', 'Priority Support', 'Multi-Warehouse'] },
+  { name: 'Free',     color: '#757575', priceLabel: '₹0',       amount: 0,    features: ['Limited enquiries per month', 'Basic Dashboard', '5 Products'] },
+  { name: 'Silver',   color: '#9E9E9E', priceLabel: '₹999/mo',  amount: 999,  features: ['Higher enquiry limit', 'Sales & Purchase Reports', 'FCM Notifications'] },
+  { name: 'Gold',     color: '#FBBC04', priceLabel: '₹1,999/mo',amount: 1999, features: ['Unlimited enquiries', 'All Reports + PDF/Excel Export', 'Staff Management', 'Customer Ledger'] },
+  { name: 'Platinum', color: '#1A73E8', priceLabel: '₹3,999/mo',amount: 3999, features: ['Unlimited enquiries', 'Priority listing in Retailer search', 'Analytics Dashboard', 'Multi-Warehouse', 'Priority Support'] },
 ];
 
-export default function SubscriptionPlanScreen() {
-  const { user } = useAuth();
-  const currentPlan = user?.subscription_plan || 'Free';
+export default function SubscriptionPlanScreen({ navigation }) {
+  const { user, refreshUser } = useAuth();
+  const [currentPlan, setCurrentPlan] = useState(user?.subscription_plan || 'Free');
+  const [busy, setBusy] = useState('');
+
+  const upgrade = (plan) => {
+    Alert.alert(`Upgrade to ${plan.name}?`, `${plan.priceLabel} — your plan will be activated for 1 month.`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Confirm', onPress: async () => {
+        setBusy(plan.name);
+        try {
+          await subscriptionService.subscribe({ plan: plan.name, months: 1, amount_paid: plan.amount });
+          setCurrentPlan(plan.name);
+          await refreshUser?.().catch(() => {});
+          Alert.alert('Activated', `You are now on the ${plan.name} plan.`);
+        } catch (e) {
+          Alert.alert('Failed', e?.message || 'Could not update plan.');
+        } finally { setBusy(''); }
+      } },
+    ]);
+  };
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
@@ -28,7 +47,7 @@ export default function SubscriptionPlanScreen() {
           <View key={plan.name} style={[styles.planCard, { borderColor: plan.color }, isCurrent && styles.activePlan]}>
             <View style={styles.planHeader}>
               <Text style={[styles.planName, { color: plan.color }]}>{plan.name}</Text>
-              <Text style={styles.planPrice}>{plan.price}</Text>
+              <Text style={styles.planPrice}>{plan.priceLabel}</Text>
             </View>
             {plan.features.map(f => (
               <View key={f} style={styles.featureRow}>
@@ -37,8 +56,9 @@ export default function SubscriptionPlanScreen() {
               </View>
             ))}
             {!isCurrent && (
-              <TouchableOpacity style={[styles.upgradeBtn, { backgroundColor: plan.color }]}>
-                <Text style={styles.upgradeBtnText}>Upgrade to {plan.name}</Text>
+              <TouchableOpacity style={[styles.upgradeBtn, { backgroundColor: plan.color }, busy === plan.name && { opacity: 0.6 }]}
+                onPress={() => upgrade(plan)} disabled={!!busy} activeOpacity={0.85}>
+                <Text style={styles.upgradeBtnText}>{busy === plan.name ? 'Activating…' : `Upgrade to ${plan.name}`}</Text>
               </TouchableOpacity>
             )}
             {isCurrent && <Text style={styles.activeBadge}>✓ Current Plan</Text>}

@@ -15,13 +15,16 @@ import {
   StatusBar,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Alert } from 'react-native';
+import { pick, types, isErrorWithCode, errorCodes } from '@react-native-documents/picker';
 import Icon from '../../components/Icon';
 import { wholesalerProductService } from '../../services/productService';
+import { masterService } from '../../services/masterService';
 import useAuth from '../../hooks/useAuth';
 import { theme } from '../../utils/theme';
 
@@ -33,6 +36,8 @@ const FILTER_KEYS = [
   { key: 'finish',   label: 'Finish'   },
   { key: 'material', label: 'Material' },
   { key: 'color',    label: 'Color'    },
+  { key: 'category', label: 'Category' },
+  { key: 'brand',    label: 'Brand'    },
 ];
 
 // ── Price row helper ─────────────────────────────────────────
@@ -47,10 +52,17 @@ function PriceRow({ label, value, strong }) {
 }
 
 // ── Product card ─────────────────────────────────────────────
-function ProductCard({ item, onPress, isMine, onDelete }) {
+const STATUS_BADGE = {
+  out_of_stock: { label: 'Out of Stock',  bg: '#FEF2F2', color: '#DC2626' },
+  discontinued: { label: 'Discontinued',  bg: '#F3F4F6', color: '#6B7280' },
+};
+
+function ProductCard({ item, onPress, isMine, onActions }) {
   const imageUrl  = item.image_urls?.[0];
-  const catName   = item.category_id?.name || item.category || '—';
-  const brandName = item.brand_id?.name    || item.brand    || '—';
+  // category/brand can arrive as a string, a populated object {name}, or {id,name,code}
+  const nameOf = (v) => (v && typeof v === 'object' ? (v.name || '—') : (v || '—'));
+  const catName   = nameOf(item.category_id) !== '—' ? nameOf(item.category_id) : nameOf(item.category);
+  const brandName = nameOf(item.brand_id)    !== '—' ? nameOf(item.brand_id)    : nameOf(item.brand);
   const unit = item.unit || 'Sq Ft';
 
   return (
@@ -70,13 +82,22 @@ function ProductCard({ item, onPress, isMine, onDelete }) {
           <View style={styles.cardTitleRow}>
             <Text style={styles.cardName} numberOfLines={1}>{item.name || '—'}</Text>
             {isMine && (
-              <TouchableOpacity onPress={onDelete} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <Icon name="trash-can-outline" size={18} color={theme.colors.danger} />
+              <TouchableOpacity onPress={onActions} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Icon name="dots-vertical" size={20} color={theme.colors.textSecondary} />
               </TouchableOpacity>
             )}
           </View>
           <View style={styles.cardCodeRow}>
             <Text style={styles.cardCode}>{item.code}</Text>
+            {item.is_active === false ? (
+              <View style={[styles.srcBadge, { backgroundColor: '#F3F4F6' }]}>
+                <Text style={[styles.srcBadgeText, { color: '#6B7280' }]}>Inactive</Text>
+              </View>
+            ) : STATUS_BADGE[item.status] ? (
+              <View style={[styles.srcBadge, { backgroundColor: STATUS_BADGE[item.status].bg }]}>
+                <Text style={[styles.srcBadgeText, { color: STATUS_BADGE[item.status].color }]}>{STATUS_BADGE[item.status].label}</Text>
+              </View>
+            ) : null}
             {item.source === 'wholesaler' ? (
               <View style={[styles.srcBadge, styles.srcBadgeMine]}>
                 <Text style={[styles.srcBadgeText, { color: '#047857' }]}>{isMine ? 'My Product' : 'Wholesaler'}</Text>
@@ -127,7 +148,10 @@ function FilterSheet({ visible, onClose, filterOptions, activeFilters, onApply }
     setLocal(prev => ({ ...prev, [key]: prev[key] === val ? '' : val }));
 
   const clearAll = () =>
-    setLocal({ size: '', finish: '', material: '', color: '' });
+    setLocal({ size: '', finish: '', material: '', color: '', category: '', brand: '' });
+
+  // filterOptions keys aren't always key+'s' (category → categories).
+  const OPT_KEY = { size: 'sizes', finish: 'finishes', material: 'materials', color: 'colors', category: 'categories', brand: 'brands' };
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
@@ -148,10 +172,10 @@ function FilterSheet({ visible, onClose, filterOptions, activeFilters, onApply }
               <View key={key} style={styles.filterGroup}>
                 <Text style={styles.filterGroupLabel}>{label}</Text>
                 <View style={styles.filterOptions}>
-                  {(filterOptions[key + 's'] || []).length === 0 ? (
+                  {(filterOptions[OPT_KEY[key]] || []).length === 0 ? (
                     <Text style={styles.noOpts}>No options</Text>
                   ) : (
-                    (filterOptions[key + 's'] || []).map(opt => {
+                    (filterOptions[OPT_KEY[key]] || []).map(opt => {
                       const active = local[key] === opt;
                       return (
                         <TouchableOpacity
@@ -214,12 +238,82 @@ export default function ProductListScreen({ navigation }) {
     );
   };
 
+  // Bulk import products from an Excel/CSV file.
+  const bulkImport = async () => {
+    try {
+      const results = await pick({ allowMultiSelection: false, type: [types.allFiles], mode: 'import' });
+      if (!results || results.length === 0) return;
+      const file = results[0];
+      if (!/\.(xlsx|xls|csv)$/i.test(file.name || '')) {
+        Alert.alert('Wrong file', 'Please choose an .xlsx, .xls or .csv file.');
+        return;
+      }
+      Alert.alert('Importing…', 'Uploading your file. This may take a moment.');
+      const res = await wholesalerProductService.bulkImport({
+        uri: file.uri, name: file.name, type: file.type || 'application/octet-stream',
+      });
+      const d = res?.data || res || {};
+      const errLine = (d.errors && d.errors.length) ? `\n\nIssues:\n• ${d.errors.slice(0, 5).join('\n• ')}` : '';
+      Alert.alert('Import Complete',
+        `Created: ${d.created ?? 0}\nUpdated: ${d.updated ?? 0}\nSkipped: ${d.skipped ?? 0}${errLine}`,
+        [{ text: 'OK', onPress: () => loadProducts(1) }]);
+    } catch (err) {
+      if (isErrorWithCode(err) && err.code === errorCodes.OPERATION_CANCELED) return;
+      Alert.alert('Import failed', err?.message || 'Could not import the file.');
+    }
+  };
+
+  // Patch a product's status/is_active and reflect it in the list.
+  const patchProduct = async (item, changes, successMsg) => {
+    try {
+      await wholesalerProductService.update(item._id, changes);
+      setProducts(prev => prev.map(p => (p._id === item._id ? { ...p, ...changes } : p)));
+      if (successMsg) Alert.alert('Done', successMsg);
+    } catch (e) {
+      Alert.alert('Failed', e?.message || 'Could not update product.');
+    }
+  };
+
+  // Duplicate: open Add Product prefilled from this item (minus id/code so a new one is created).
+  const duplicateProduct = (item) => {
+    const { _id, id, code, created_at, updated_at, ...rest } = item;
+    navigation.navigate('AddProduct', { product: { ...rest, name: `${item.name} (Copy)` } });
+  };
+
+  // "⋯" actions menu for the wholesaler's own products.
+  const openActions = (item) => {
+    const isInactive = item.is_active === false;
+    const isOOS      = item.status === 'out_of_stock';
+    const isDisc     = item.status === 'discontinued';
+    Alert.alert(item.name || 'Product', 'Choose an action', [
+      { text: 'Edit',      onPress: () => navigation.navigate('AddProduct', { product: item }) },
+      { text: 'Duplicate', onPress: () => duplicateProduct(item) },
+      {
+        text: isOOS ? 'Mark In Stock' : 'Mark Out of Stock',
+        onPress: () => patchProduct(item, { status: isOOS ? 'active' : 'out_of_stock' },
+          isOOS ? 'Marked as in stock.' : 'Marked out of stock.'),
+      },
+      {
+        text: isDisc ? 'Re-list Product' : 'Mark Discontinued',
+        onPress: () => patchProduct(item, { status: isDisc ? 'active' : 'discontinued' },
+          isDisc ? 'Product re-listed.' : 'Marked discontinued.'),
+      },
+      {
+        text: isInactive ? 'Activate' : 'Deactivate',
+        onPress: () => patchProduct(item, { is_active: isInactive },
+          isInactive ? 'Product activated.' : 'Product deactivated (hidden from catalog).'),
+      },
+      { text: 'Delete', style: 'destructive', onPress: () => confirmDelete(item) },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  };
+
   const [products,      setProducts]      = useState([]);
   const [pagination,    setPagination]    = useState({ page: 1, totalPages: 1, total: 0 });
   const [search,        setSearch]        = useState('');
   const [sourceTab,     setSourceTab]     = useState('all');   // 'all' | 'admin' | 'mine'
-  const [activeFilters, setActiveFilters] = useState({ size: '', finish: '', material: '', color: '' });
-  const [filterOptions, setFilterOptions] = useState({ sizes: [], finishes: [], materials: [], colors: [] });
+  const [activeFilters, setActiveFilters] = useState({ size: '', finish: '', material: '', color: '', category: '', brand: '' });
+  const [filterOptions, setFilterOptions] = useState({ sizes: [], finishes: [], materials: [], colors: [], categories: [], brands: [] });
   const [filterVisible, setFilterVisible] = useState(false);
   const [loading,       setLoading]       = useState(true);
   const [loadingMore,   setLoadingMore]   = useState(false);
@@ -229,11 +323,18 @@ export default function ProductListScreen({ navigation }) {
   const searchTimer = useRef(null);
   const currentPage = useRef(1);
 
-  // Load filter options once
+  // Load filter options once (distinct product values + master category/brand lists)
   useEffect(() => {
-    wholesalerProductService.getFilters()
-      .then(res => setFilterOptions(res?.data ?? {}))
-      .catch(() => {});
+    Promise.all([
+      wholesalerProductService.getFilters().then(r => r?.data ?? r ?? {}).catch(() => ({})),
+      masterService.all().then(r => r?.data?.masters ?? r?.masters ?? {}).catch(() => ({})),
+    ]).then(([f, m]) => {
+      setFilterOptions({
+        ...f,
+        categories: (m.category || []).map(x => x.name || x).filter(Boolean),
+        brands:     (m.brand    || []).map(x => x.name || x).filter(Boolean),
+      });
+    });
   }, []);
 
   // Load / reload products
@@ -252,6 +353,8 @@ export default function ProductListScreen({ navigation }) {
         ...(activeFilters.finish   && { finish:   activeFilters.finish }),
         ...(activeFilters.material && { material: activeFilters.material }),
         ...(activeFilters.color    && { color:    activeFilters.color }),
+        ...(activeFilters.category && { category: activeFilters.category }),
+        ...(activeFilters.brand    && { brand:    activeFilters.brand }),
       };
 
       const res  = await wholesalerProductService.listCatalog(params);
@@ -332,6 +435,29 @@ export default function ProductListScreen({ navigation }) {
               </View>
             )}
           </TouchableOpacity>
+        </View>
+
+        {/* Search box — code / name / size */}
+        <View style={styles.searchBar}>
+          <Icon name="magnify" size={18} color={theme.colors.textDisabled} />
+          <TextInput
+            style={styles.searchBarInput}
+            placeholder="Search code, name, size…"
+            placeholderTextColor={theme.colors.textDisabled}
+            value={search}
+            onChangeText={(t) => {
+              setSearch(t);
+              if (searchTimer.current) clearTimeout(searchTimer.current);
+              searchTimer.current = setTimeout(() => loadProducts(1), 400);
+            }}
+            returnKeyType="search"
+            onSubmitEditing={() => loadProducts(1)}
+          />
+          {search ? (
+            <TouchableOpacity onPress={() => { setSearch(''); loadProducts(1); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Icon name="close-circle" size={16} color={theme.colors.textDisabled} />
+            </TouchableOpacity>
+          ) : null}
         </View>
 
       </View>
@@ -420,7 +546,7 @@ export default function ProductListScreen({ navigation }) {
             <ProductCard
               item={item}
               isMine={myCompanyId && String(item.company_id) === myCompanyId}
-              onDelete={() => confirmDelete(item)}
+              onActions={() => openActions(item)}
               onPress={() => navigation.navigate('ProductDetail', { productId: item._id })}
             />
           )}
@@ -453,7 +579,7 @@ export default function ProductListScreen({ navigation }) {
                     style={styles.clearFiltersBtn}
                     onPress={() => {
                       setSearch('');
-                      setActiveFilters({ size: '', finish: '', material: '', color: '' });
+                      setActiveFilters({ size: '', finish: '', material: '', color: '', category: '', brand: '' });
                     }}
                   >
                     <Text style={styles.clearFiltersBtnText}>Clear Search & Filters</Text>
@@ -480,9 +606,9 @@ export default function ProductListScreen({ navigation }) {
           <Icon name="plus-circle-outline" size={22} color={NAV} />
           <Text style={styles.fabIconText}>Add</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.fabIcon} activeOpacity={0.8} onPress={() => navigation.navigate('QuotationList')}>
-          <Icon name="file-document-outline" size={22} color={NAV} />
-          <Text style={styles.fabIconText}>Quotes</Text>
+        <TouchableOpacity style={styles.fabIcon} activeOpacity={0.8} onPress={bulkImport}>
+          <Icon name="file-excel-outline" size={22} color={NAV} />
+          <Text style={styles.fabIconText}>Import</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.fabIcon} activeOpacity={0.8} onPress={() => navigation.navigate('InvoiceList')}>
           <Icon name="receipt-text-outline" size={22} color={NAV} />
@@ -510,6 +636,12 @@ const styles = StyleSheet.create({
     paddingBottom: 14,
     overflow: 'hidden',
   },
+  searchBar: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: '#fff', borderRadius: 12, paddingHorizontal: 12,
+    marginTop: 12, height: 42,
+  },
+  searchBarInput: { flex: 1, fontSize: 14, color: theme.colors.textPrimary, paddingVertical: 0 },
   hCircle1: {
     position: 'absolute', top: -30, right: -30,
     width: 130, height: 130, borderRadius: 65,

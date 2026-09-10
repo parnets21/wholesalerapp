@@ -62,6 +62,7 @@ export default function PurchaseEntryScreen({ route, navigation }) {
 
   const [form, setForm] = useState({
     supplier_name: '',
+    purchase_date: new Date().toISOString().slice(0, 10),   // YYYY-MM-DD, defaults to today
     product_name:  preset?.name || '',
     product_id:    preset?._id || null,
     product_code:  preset?.code || '',
@@ -111,6 +112,7 @@ export default function PurchaseEntryScreen({ route, navigation }) {
 
     const payload = {
       supplier_name: form.supplier_name.trim(),
+      purchase_date: form.purchase_date || undefined,
       product_id:    form.product_id || null,
       product_code:  form.product_code || '',
       product_name:  form.product_name.trim(),
@@ -160,6 +162,21 @@ export default function PurchaseEntryScreen({ route, navigation }) {
 
           <FormField label="Supplier Name *" value={form.supplier_name}
             onChangeText={v => set('supplier_name', v)} placeholder="Supplier / vendor name" />
+
+          {/* Purchase date (YYYY-MM-DD) with a Today shortcut */}
+          <Text style={styles.dateLabel}>Purchase Date</Text>
+          <View style={styles.dateRow}>
+            <View style={{ flex: 1 }}>
+              <FormField label="" value={form.purchase_date}
+                onChangeText={v => set('purchase_date', v.replace(/[^0-9-]/g, ''))}
+                placeholder="YYYY-MM-DD" maxLength={10} />
+            </View>
+            <TouchableOpacity style={styles.todayBtn}
+              onPress={() => set('purchase_date', new Date().toISOString().slice(0, 10))} activeOpacity={0.8}>
+              <Text style={styles.todayBtnText}>Today</Text>
+            </TouchableOpacity>
+          </View>
+
           <FormField label="Product Name *" value={form.product_name}
             onChangeText={v => set('product_name', v)} placeholder="Item you are buying" />
         </View>
@@ -352,6 +369,12 @@ const styles = StyleSheet.create({
   },
   saveBtnOff: { opacity: 0.6 },
   saveBtnText: { color: '#fff', fontSize: 15, fontWeight: '800' },
+
+  /* Purchase date */
+  dateLabel: { fontSize: 13, fontWeight: '600', color: theme.colors.textPrimary, marginBottom: 6 },
+  dateRow:   { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  todayBtn:  { backgroundColor: theme.colors.accentLight, borderRadius: 10, paddingHorizontal: 16, paddingVertical: 12, borderWidth: 1, borderColor: theme.colors.accent },
+  todayBtnText: { color: theme.colors.accent, fontWeight: '700', fontSize: 13 },
 
   /* Product picker */
   pickLabel: { fontSize: 13, fontWeight: '600', color: theme.colors.textPrimary, marginBottom: 6 },

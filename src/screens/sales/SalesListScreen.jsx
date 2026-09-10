@@ -301,6 +301,9 @@ export default function SalesListScreen({ navigation }) {
             <Text style={styles.headerTitle}>Sales</Text>
             <Text style={styles.headerSub}>Revenue & Transactions</Text>
           </View>
+          <TouchableOpacity onPress={() => navigation.navigate('SalesReport')} style={[styles.headerAction, { marginRight: 8 }]}>
+            <Icon name="chart-bar" size={20} color={WHITE} />
+          </TouchableOpacity>
           <TouchableOpacity onPress={() => navigation.navigate('SalesEntry')} style={styles.headerAction}>
             <Icon name="plus" size={20} color={WHITE} />
           </TouchableOpacity>

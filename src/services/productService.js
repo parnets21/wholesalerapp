@@ -31,6 +31,43 @@ export const wholesalerProductService = {
   // POST /api/wholesaler/products  — wholesaler creates their own product/item
   create: (data) => api.post('/wholesaler/products', data),
 
+  // PUT /api/wholesaler/products/:id  — edit own product
+  update: (id, data) => api.put(`/wholesaler/products/${id}`, data),
+
+  // POST /api/wholesaler/products/upload-image  — multipart image → { url }
+  // `file` = { uri, name, type } from react-native image picker
+  uploadImage: (file) => {
+    const form = new FormData();
+    form.append('image', {
+      uri: file.uri,
+      name: file.name || `photo_${Date.now()}.jpg`,
+      type: file.type || 'image/jpeg',
+    });
+    return api.upload('/wholesaler/products/upload-image', form);
+  },
+
+  // POST /api/wholesaler/products/upload-doc  — multipart PDF → { url }
+  uploadDoc: (file) => {
+    const form = new FormData();
+    form.append('doc', {
+      uri: file.uri,
+      name: file.name || `catalog_${Date.now()}.pdf`,
+      type: file.type || 'application/pdf',
+    });
+    return api.upload('/wholesaler/products/upload-doc', form);
+  },
+
+  // POST /api/wholesaler/products/bulk-import  — multipart xlsx/csv → { created, updated, skipped, errors }
+  bulkImport: (file) => {
+    const form = new FormData();
+    form.append('file', {
+      uri: file.uri,
+      name: file.name || `import_${Date.now()}.xlsx`,
+      type: file.type || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    });
+    return api.upload('/wholesaler/products/bulk-import', form);
+  },
+
   // GET /api/wholesaler/products/mine  — products this wholesaler created
   listMine: (params) => api.get('/wholesaler/products/mine', { params }),
 

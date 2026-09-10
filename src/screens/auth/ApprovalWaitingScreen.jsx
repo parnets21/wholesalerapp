@@ -34,11 +34,30 @@ export default function ApprovalWaitingScreen({ navigation }) {
   const [localStatus, setLocalStatus] = useState(
     user?.company_status || 'Pending'
   );
+  // Set when admin requests document resubmission (status Pending + a reason).
+  const [resubmitReason, setResubmitReason] = useState('');
+  // Set when admin suspends the company.
+  const [suspendReason, setSuspendReason] = useState('');
 
   // ── Sync when FCM push triggers isApproved in AuthContext ────────────────
   useEffect(() => {
     if (authApproved) setLocalStatus('Approved');
   }, [authApproved]);
+
+  // ── On mount: fetch latest status so a resubmission request shows up ─────
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await authService.getApprovalStatus();
+        const s   = res?.data ?? res;
+        if (s?.status) {
+          setLocalStatus(s.status);
+          setResubmitReason(s.status === 'Pending' ? (s.rejectReason || '') : '');
+          setSuspendReason(s.status === 'Suspended' ? (s.suspendReason || '') : '');
+        }
+      } catch {}
+    })();
+  }, []);
 
   // ── Android hardware back — allow going back to Welcome ──────────────────
   useEffect(() => {
@@ -56,7 +75,8 @@ export default function ApprovalWaitingScreen({ navigation }) {
   // ── Derived booleans ─────────────────────────────────────────────────────
   const isApprovedLocal = localStatus === 'Approved';
   const isRejected      = localStatus === 'Rejected';
-  const isPending       = !isApprovedLocal && !isRejected;
+  const isSuspended     = localStatus === 'Suspended';
+  const isPending       = !isApprovedLocal && !isRejected && !isSuspended;
 
   // ── Manual "Check Now" — hit backend, do NOT trust only AsyncStorage ─────
   const handleCheckNow = useCallback(async () => {
@@ -68,6 +88,9 @@ export default function ApprovalWaitingScreen({ navigation }) {
       const newStatus = statusRes?.status || 'Pending';
 
       setLocalStatus(newStatus);
+      // Pending + a reject reason = admin asked to re-upload documents.
+      setResubmitReason(newStatus === 'Pending' ? (statusRes?.rejectReason || '') : '');
+      setSuspendReason(newStatus === 'Suspended' ? (statusRes?.suspendReason || '') : '');
 
       if (newStatus === 'Approved') {
         // Also refresh the full user in AuthContext so RootNavigator flips
@@ -132,7 +155,7 @@ export default function ApprovalWaitingScreen({ navigation }) {
           isApprovedLocal && styles.iconCircleApproved,
         ]}>
           <Text style={styles.statusIcon}>
-            {isApprovedLocal ? '🎉' : isRejected ? '❌' : '⏳'}
+            {isApprovedLocal ? '🎉' : isRejected ? '❌' : isSuspended ? '🚫' : '⏳'}
           </Text>
         </View>
 
@@ -142,7 +165,9 @@ export default function ApprovalWaitingScreen({ navigation }) {
             ? 'Account Approved!'
             : isRejected
               ? 'Application Rejected'
-              : 'Registration Under Review'}
+              : isSuspended
+                ? 'Account Suspended'
+                : 'Registration Under Review'}
         </Text>
 
         {/* Message */}
@@ -151,28 +176,31 @@ export default function ApprovalWaitingScreen({ navigation }) {
             ? 'Your company has been approved by admin. Your dashboard is opening now.'
             : isRejected
               ? 'Your application has been rejected. Please contact support for assistance.'
-              : 'Your registration has been submitted successfully.\n\nOur team is reviewing your registration. You will be notified once your account is approved.'}
+              : isSuspended
+                ? `Your account has been suspended by admin.${suspendReason ? `\n\nReason: ${suspendReason}` : ''}\n\nPlease contact support to restore access.`
+                : 'Your registration has been submitted successfully.\n\nOur team is reviewing your registration. You will be notified once your account is approved.'}
         </Text>
 
         {/* Status pill */}
         <View style={[
           styles.statusPill,
-          isRejected      && styles.statusPillRejected,
+          (isRejected || isSuspended) && styles.statusPillRejected,
           isApprovedLocal && styles.statusPillApproved,
         ]}>
           <View style={[
             styles.statusDot,
-            isRejected      && styles.statusDotRejected,
+            (isRejected || isSuspended) && styles.statusDotRejected,
             isApprovedLocal && styles.statusDotApproved,
           ]} />
           <Text style={[
             styles.statusPillText,
-            isRejected      && styles.statusPillTextRejected,
+            (isRejected || isSuspended) && styles.statusPillTextRejected,
             isApprovedLocal && styles.statusPillTextApproved,
           ]}>
             Status: {
               isApprovedLocal ? 'Approved'
                 : isRejected  ? 'Rejected'
+                : isSuspended ? 'Suspended'
                               : '● Under Review'
             }
           </Text>
@@ -198,6 +226,21 @@ export default function ApprovalWaitingScreen({ navigation }) {
                 {s.done && <Text style={styles.stepCheck}>✓</Text>}
               </View>
             ))}
+          </View>
+        )}
+
+        {/* Resubmission requested — admin asked to re-upload documents */}
+        {isPending && !!resubmitReason && (
+          <View style={styles.resubmitBox}>
+            <Text style={styles.resubmitTitle}>Document Resubmission Required</Text>
+            <Text style={styles.resubmitMsg}>{resubmitReason}</Text>
+            <TouchableOpacity
+              style={styles.resubmitBtn}
+              onPress={() => navigation.navigate('DocumentUpload', { mobile: user?.mobile, resubmit: true })}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.resubmitBtnText}>📤  Re-upload Documents</Text>
+            </TouchableOpacity>
           </View>
         )}
 
@@ -393,6 +436,16 @@ const styles = StyleSheet.create({
   },
   checkBtnDisabled: { opacity: 0.65 },
   checkBtnText: { fontSize: 15, fontWeight: '700', color: '#FFF' },
+
+  // Resubmission box
+  resubmitBox: {
+    width: '100%', backgroundColor: '#FFF8E8', borderRadius: 14, padding: 16,
+    marginBottom: 14, borderWidth: 1, borderColor: '#FDE68A',
+  },
+  resubmitTitle: { fontSize: 14, fontWeight: '800', color: '#B45309', marginBottom: 6 },
+  resubmitMsg:   { fontSize: 13, color: '#7C5E10', lineHeight: 20, marginBottom: 12 },
+  resubmitBtn:   { backgroundColor: theme.colors.accent, borderRadius: 12, paddingVertical: 13, alignItems: 'center' },
+  resubmitBtnText: { fontSize: 14, fontWeight: '800', color: '#fff' },
 
   // Approved success box
   successBox: {

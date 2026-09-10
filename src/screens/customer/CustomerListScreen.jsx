@@ -16,12 +16,17 @@ export default function CustomerListScreen({ navigation }) {
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
-    try { const res = await customerService.list({}); setCustomers(res?.data ?? res ?? []); }
+    try {
+      const res = await customerService.list({ limit: 200 });
+      const data = res?.data ?? res ?? {};
+      setCustomers(Array.isArray(data) ? data : (data.customers ?? []));
+    }
     catch (e) { setError(e?.message || 'Failed to load customers'); }
     finally { setLoading(false); }
   }, []);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => navigation.addListener('focus', load), [navigation, load]);
 
   const filtered = filterCustomers(search, customers || []);
 
@@ -53,6 +58,9 @@ export default function CustomerListScreen({ navigation }) {
         contentContainerStyle={styles.list}
         ListEmptyComponent={<EmptyState icon="👥" title="No customers found" />}
       />
+      <TouchableOpacity style={styles.fab} onPress={() => navigation.navigate('AddCustomer')} activeOpacity={0.85}>
+        <Text style={styles.fabText}>+  Add Customer</Text>
+      </TouchableOpacity>
     </View>
   );
 }
@@ -68,4 +76,6 @@ const styles = StyleSheet.create({
   outstanding: { alignItems: 'flex-end' },
   amount:      { fontSize: 15, fontWeight: '700' },
   outLabel:    { fontSize: 11, color: theme.colors.textSecondary },
+  fab:         { position: 'absolute', right: 16, bottom: 20, backgroundColor: theme.colors.accent, borderRadius: 26, paddingHorizontal: 20, paddingVertical: 14, elevation: 4, shadowColor: '#000', shadowOpacity: 0.2, shadowOffset: { width: 0, height: 3 }, shadowRadius: 6 },
+  fabText:     { color: '#fff', fontWeight: '800', fontSize: 14 },
 });

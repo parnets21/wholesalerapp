@@ -5,6 +5,7 @@ import { Platform, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from '../components/Icon';
 import { theme } from '../utils/theme';
+import usePermissions from '../hooks/usePermissions';
 
 import DashboardScreen   from '../screens/dashboard/DashboardScreen';
 import EnquiryListScreen from '../screens/enquiry/EnquiryListScreen';
@@ -66,11 +67,11 @@ const styles = StyleSheet.create({
 });
 
 const TABS = [
-  { name: 'Dashboard', label: 'Home',      icon: 'home-outline',                   iconActive: 'home',                   component: DashboardScreen   },
-  { name: 'Enquiries', label: 'Enquiries', icon: 'message-text-outline',           iconActive: 'message-text',           component: EnquiryListScreen },
-  { name: 'Products',  label: 'Products',  icon: 'package-variant-closed',         iconActive: 'package-variant',        component: ProductListScreen },
-  { name: 'Sales',     label: 'Sales',     icon: 'cash-multiple',                  iconActive: 'cash-multiple',          component: SalesListScreen   },
-  { name: 'Profile',   label: 'Profile',   icon: 'account-circle-outline',         iconActive: 'account-circle',         component: ProfileScreen     },
+  { name: 'Dashboard', label: 'Home',      icon: 'home-outline',                   iconActive: 'home',                   component: DashboardScreen,   module: 'dashboard' },
+  { name: 'Enquiries', label: 'Enquiries', icon: 'message-text-outline',           iconActive: 'message-text',           component: EnquiryListScreen, module: 'enquiries' },
+  { name: 'Products',  label: 'Products',  icon: 'package-variant-closed',         iconActive: 'package-variant',        component: ProductListScreen, module: 'products'  },
+  { name: 'Sales',     label: 'Sales',     icon: 'cash-multiple',                  iconActive: 'cash-multiple',          component: SalesListScreen,   module: 'sales'     },
+  { name: 'Profile',   label: 'Profile',   icon: 'account-circle-outline',         iconActive: 'account-circle',         component: ProfileScreen,     module: 'profile'   },
 ];
 
 // Custom tab button with NO ripple / press highlight — clean tap, no focus effect.
@@ -95,6 +96,9 @@ export default function BottomTabNavigator() {
   // Safe-area aware height — gesture-nav / notch phones par bar cut nahi hogi
   const insets = useSafeAreaInsets();
   const barHeight = 60 + (Platform.OS === 'ios' ? Math.max(insets.bottom, 20) : Math.max(insets.bottom, 8));
+  const { can } = usePermissions();
+  // Dashboard + Profile always shown; others gated by role.
+  const visibleTabs = TABS.filter(t => t.module === 'dashboard' || t.module === 'profile' || can(t.module));
 
   return (
     <Tab.Navigator
@@ -130,7 +134,7 @@ export default function BottomTabNavigator() {
         },
       }}
     >
-      {TABS.map(tab => (
+      {visibleTabs.map(tab => (
         <Tab.Screen
           key={tab.name}
           name={tab.name}

@@ -3,9 +3,11 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  Alert, FlatList, Modal, RefreshControl, ScrollView,
+  Alert, FlatList, Image, Modal, RefreshControl, ScrollView,
   StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
+import { BASE_URL } from '../../services/api';
+import { pick, types, isErrorWithCode, errorCodes } from '@react-native-documents/picker';
 import Icon           from '../../components/Icon';
 import EmptyState     from '../../components/EmptyState';
 import ErrorMessage   from '../../components/ErrorMessage';
@@ -36,6 +38,9 @@ const STATUS_META = {
 
 const FILTER_TABS = ['All', 'Dispatched', 'In Transit', 'Delivered'];
 
+const IMG_HOST = BASE_URL.replace(/\/api\/?$/, '');
+const resolveImg = (u) => (!u ? null : /^https?:\/\//.test(u) ? u : `${IMG_HOST}${u}`);
+
 // ─────────────────────────────────────────────────────────────────────────────
 // DISPATCH DETAIL MODAL
 // ─────────────────────────────────────────────────────────────────────────────
@@ -64,22 +69,38 @@ function DispatchDetailModal({ visible, dispatchId, onClose, onStatusChanged }) 
     finally { setUpdating(false); }
   };
 
-  const markDelivered = async () => {
-    Alert.alert('Confirm Delivery', 'Mark this dispatch as Delivered?', [
+  const doDeliver = async (podUrl) => {
+    setUpdating(true);
+    try {
+      await dispatchService.markDelivered(dispatchId, podUrl ? { pod_image_url: podUrl } : {});
+      Alert.alert('Delivered!', 'Marked delivered. Sale auto-created.');
+      onStatusChanged?.();
+      onClose();
+    } catch (e) { Alert.alert('Error', e?.message || 'Failed'); }
+    finally { setUpdating(false); }
+  };
+
+  const attachPodAndDeliver = async () => {
+    try {
+      const results = await pick({ allowMultiSelection: false, type: [types.images], mode: 'import' });
+      if (!results || results.length === 0) return;
+      const file = results[0];
+      setUpdating(true);
+      const res = await dispatchService.uploadPod({ uri: file.uri, name: file.name, type: file.type });
+      const url = res?.data?.url || res?.url;
+      await doDeliver(url);
+    } catch (err) {
+      if (isErrorWithCode(err) && err.code === errorCodes.OPERATION_CANCELED) { setUpdating(false); return; }
+      Alert.alert('Upload failed', err?.message || 'Could not upload proof.');
+      setUpdating(false);
+    }
+  };
+
+  const markDelivered = () => {
+    Alert.alert('Mark Delivered', 'Add proof of delivery (photo/signature)?', [
       { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delivered', style: 'default',
-        onPress: async () => {
-          setUpdating(true);
-          try {
-            await dispatchService.markDelivered(dispatchId);
-            Alert.alert('Delivered!', 'Sale auto-created and marked as Delivered.');
-            onStatusChanged?.();
-            onClose();
-          } catch (e) { Alert.alert('Error', e?.message || 'Failed'); }
-          finally { setUpdating(false); }
-        },
-      },
+      { text: 'Skip', onPress: () => doDeliver(null) },
+      { text: 'Add Photo', onPress: attachPodAndDeliver },
     ]);
   };
 
@@ -155,6 +176,14 @@ function DispatchDetailModal({ visible, dispatchId, onClose, onStatusChanged }) 
                 <InfoRow label="Delivered On" value={formatDate(d.delivered_date)} />
               )}
             </View>
+
+            {/* Proof of delivery */}
+            {d.pod_image_url ? (
+              <View style={styles.detailCard}>
+                <Text style={styles.sectionLabel}>PROOF OF DELIVERY</Text>
+                <Image source={{ uri: resolveImg(d.pod_image_url) }} style={styles.podImg} resizeMode="cover" />
+              </View>
+            ) : null}
 
             {/* Sale info */}
             {d.sale && (
@@ -296,8 +325,8 @@ export default function DispatchTrackingScreen({ navigation }) {
             </View>
             <View style={styles.dateSep} />
             <View style={styles.dateItem}>
-              <Text style={styles.dateLabel}>Expected Delivery</Text>
-              <Text style={styles.dateValue}>{formatDate(item.expected_delivery) || '—'}</Text>
+              <Text style={styles.dateLabel}>{item.delivered_date ? 'Delivered' : 'Expected Delivery'}</Text>
+              <Text style={styles.dateValue}>{formatDate(item.delivered_date || item.expected_delivery) || '—'}</Text>
             </View>
           </View>
         </View>
@@ -479,6 +508,7 @@ const styles = StyleSheet.create({
   modalContent: { padding: 16, paddingBottom: 40, gap: 12 },
 
   detailCard: { backgroundColor: WHITE, borderRadius: 16, padding: 16, ...SHADOW },
+  podImg: { width: '100%', height: 200, borderRadius: 12, marginTop: 8, backgroundColor: '#F1F5F9' },
   dispatchHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
   dispatchCode: { fontSize: 18, fontWeight: '800', color: PRIMARY },
   dispatchDate: { fontSize: 12, color: MUTED },
